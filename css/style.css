@@ -57,7 +57,7 @@ button { cursor: pointer; }
 .bar {
   position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; gap: 8px;
-  padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+  padding: calc(16px + env(safe-area-inset-top)) 12px 8px; /* 上の余白に右上のバージョン表示が入る */
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: saturate(1.4) blur(12px);
   -webkit-backdrop-filter: saturate(1.4) blur(12px);
@@ -259,9 +259,9 @@ textarea { resize: vertical; }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 .version {
-  position: fixed; right: 8px; bottom: calc(6px + env(safe-area-inset-bottom)); z-index: 40;
-  font-size: 10px; color: var(--sub); opacity: .8; pointer-events: none;
-  font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--bg) 80%, transparent); padding: 1px 6px; border-radius: 6px;
+  position: fixed; right: 10px; top: calc(2px + env(safe-area-inset-top)); z-index: 40;
+  font-size: 10px; line-height: 1.4; color: var(--sub); opacity: .75; pointer-events: none;
+  font-variant-numeric: tabular-nums;
 }
 
 .input-wrap { position: relative; }
@@ -414,7 +414,6 @@ textarea { resize: vertical; }
 .tab-plus { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: var(--primary); color: #fff; margin-bottom: -2px; }
 .tab-plus .i { width: 20px; height: 20px; stroke-width: 2.2; }
 body:has(.tabbar:not([hidden])) .page { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
-body:has(.tabbar:not([hidden])) .version { bottom: calc(66px + env(safe-area-inset-bottom)); }
 body:has(.tabbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .appt-at-wrap input { caret-color: transparent; } .appt-at-wrap input::selection, .appt-at-wrap input::-webkit-datetime-edit-fields-wrapper { background: transparent; } .appt-at-wrap input::-webkit-datetime-edit { color: transparent; }
 
