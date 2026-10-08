@@ -25,8 +25,15 @@ const $app = document.getElementById('app');
 document.getElementById('version').textContent =
   `ver${VERSION} ${DEPLOYED_AT.startsWith('__') ? 'local' : DEPLOYED_AT}`;
 
-const state = { user: null, authReady: false, facilities: [], loaded: false, settings: { ...DEFAULT_SETTINGS } };
+const state = { user: null, authReady: false, facilities: [], loaded: false, settings: { ...DEFAULT_SETTINGS }, activeId: loadActiveId() };
 let unsubs = [];
+
+function loadActiveId() {
+  try { return localStorage.getItem('activeCard') || ''; } catch { return ''; }
+}
+function saveActiveId(id) {
+  try { localStorage.setItem('activeCard', id); } catch { /* 保存できなくても動作に支障なし */ }
+}
 let draft = null; // 編集中の施設
 let pendingDraft = null; // 詳細画面のAI再読み取り結果を編集画面へ渡す
 
@@ -52,7 +59,7 @@ if (configured) {
         state.facilities = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ja'));
         state.loaded = true;
-        if (!isEditing() || !draft) render();
+        if ((!isEditing() || !draft) && !isTyping()) render();
       }, (err) => toast(`読み込みに失敗しました: ${err.message}`)));
       let firstSettings = true;
       unsubs.push(onSnapshot(doc(db, 'users', user.uid), (snap) => {
@@ -92,6 +99,8 @@ const todayIdx = () => (new Date().getDay() + 6) % 7; // 月=0
 const catOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[3];
 const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '');
 const isEditing = () => parseRoute().parts[0] === 'edit' || parseRoute().parts[0] === 'new';
+// 予約の入力途中に画面を描き直さない
+const isTyping = () => [...document.querySelectorAll('#appt-form input')].some((el) => el.value || el === document.activeElement);
 
 function sortedSessions(f) {
   return [...(f.sessions || [])].sort((a, b) => toMin(a.start) - toMin(b.start));
@@ -194,6 +203,42 @@ function viewLogin() {
 }
 function bindLogin() { document.getElementById('login').onclick = login; }
 
+// ---------- 予約 ----------
+const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function upcomingAppts(f) {
+  const now = Date.now();
+  return (f.appointments || [])
+    .filter((a) => new Date(a.at).getTime() > now - 60 * 60 * 1000) // 開始1時間後までは表示
+    .sort((a, b) => a.at.localeCompare(b.at));
+}
+
+function apptDate(at) {
+  const d = new Date(at);
+  return `${d.getMonth() + 1}月${d.getDate()}日(${WEEK[d.getDay()]}) ${d.getHours()}:${pad2(d.getMinutes())}`;
+}
+
+function apptRelative(at) {
+  const d = new Date(at);
+  const today = new Date();
+  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+  if (days <= 0) return '今日';
+  if (days === 1) return '明日';
+  return `あと${days}日`;
+}
+
+function apptBanner(f) {
+  const a = upcomingAppts(f)[0];
+  if (!a) return '';
+  const rel = apptRelative(a.at);
+  return `<div class="appt-banner${rel === '今日' || rel === '明日' ? ' soon' : ''}">
+    ${icon('calendar')}
+    <span class="appt-main"><span class="appt-label">次の予約</span><span class="appt-when">${apptDate(a.at)}</span>${a.memo ? `<span class="appt-memo">${esc(a.memo)}</span>` : ''}</span>
+    <span class="appt-rel">${rel}</span>
+  </div>`;
+}
+
 function viewHome() {
   const cats = CATEGORIES.filter((c) => state.facilities.some((f) => f.category === c.id));
   const filter = cats.some((c) => c.id === state.homeFilter) ? state.homeFilter : '';
@@ -206,7 +251,7 @@ function viewHome() {
       ${cats.map((c) => `<button class="chip ${filter === c.id ? 'on' : ''}" data-filter="${c.id}">${icon(c.icon)}${c.label}</button>`).join('')}
     </div>` : ''}
     ${!state.loaded ? '<div class="center"><div class="spinner"></div></div>'
-      : items.length ? `<div class="cards">${items.map((f) => scheduleBoard(f, { compact: true })).join('')}</div>
+      : items.length ? `${stackedCards(items)}
         <button class="add-more" data-open-sheet>${icon('plus')}施設を登録</button>`
       : `<div class="empty">
           <div class="empty-icon">${icon('logo')}</div>
@@ -223,6 +268,28 @@ function viewHome() {
   </div>`;
 }
 
+// 財布のカードのように重ねる。選択中のカードだけ全体を表示し、他は上部だけ見せる
+function stackedCards(items) {
+  const active = items.find((f) => f.id === state.activeId) || items[0];
+  const others = items.filter((f) => f !== active);
+  return `<div class="stack">
+    ${others.map((f) => {
+      const st = statusOf(f);
+      const cat = catOf(f.category);
+      const a = upcomingAppts(f)[0];
+      return `<button class="strip" data-activate="${f.id}">
+        <span class="strip-icon">${icon(cat.icon)}</span>
+        <span class="strip-body">
+          <span class="strip-name">${esc(f.name || '名称未設定')}</span>
+          <span class="strip-sub">${a ? `${icon('calendar')}予約 ${apptDate(a.at)}` : esc([cat.label, f.department].filter(Boolean).join('・'))}</span>
+        </span>
+        <span class="pill ${st.cls}">${st.cls === 'open' ? '<span class="live"></span>' : ''}${esc(st.label)}</span>
+      </button>`;
+    }).join('')}
+    <div class="stack-active">${scheduleBoard(active, { compact: true })}</div>
+  </div>`;
+}
+
 function newOptions() {
   return CATEGORIES.flatMap((c) => (c.hasDept
     ? (state.settings.departments?.length ? state.settings.departments : ['内科'])
@@ -234,13 +301,21 @@ function bindHome() {
   const sheet = document.getElementById('sheet');
   document.querySelectorAll('[data-open-sheet]').forEach((b) => { b.onclick = () => { sheet.hidden = false; }; });
   sheet.onclick = (e) => { if (e.target === sheet || e.target.closest('[data-close-sheet]')) sheet.hidden = true; };
+  document.querySelectorAll('[data-activate]').forEach((b) => {
+    b.onclick = () => {
+      state.activeId = b.dataset.activate;
+      saveActiveId(state.activeId);
+      render();
+      document.querySelector('.stack-active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+  });
   document.querySelectorAll('[data-filter]').forEach((b) => {
     b.onclick = () => { state.homeFilter = b.dataset.filter; render(); };
   });
   fitBoardName();
 }
 
-// 今の時刻に当たる時間帯（診療中）と、本日この後の時間帯を求める
+// 今の時刻に当たる時間帯（診療中）と、本日この後の時間帯、表の中の「いま」の位置を求める
 function nowMarks(sessions) {
   const d = todayIdx();
   const now = new Date();
@@ -248,7 +323,9 @@ function nowMarks(sessions) {
   const today = sessions.filter((s) => s.days?.[d]);
   const current = today.find((s) => toMin(s.start) <= m && m < toMin(s.end));
   const next = current ? null : today.find((s) => m < toMin(s.start));
-  return { current, next };
+  // 診療時間外のときは、時刻順で「いま」が入る行の位置（この行の前に線を引く）
+  const lineAt = current ? -1 : sessions.filter((s) => toMin(s.end) <= m).length;
+  return { current, next, lineAt, label: `${now.getHours()}:${pad2(now.getMinutes())}` };
 }
 
 function scheduleBoard(f, { compact = false } = {}) {
@@ -256,7 +333,8 @@ function scheduleBoard(f, { compact = false } = {}) {
   const td = todayIdx();
   const st = statusOf(f);
   const closed = closedDaysText(f);
-  const { current, next } = nowMarks(sessions);
+  const { current, next, lineAt, label } = nowMarks(sessions);
+  const nowLine = `<tr class="now-line"><td colspan="8"><span class="now-tag">いま ${label}</span></td></tr>`;
   const cat = catOf(f.category);
   const tel = f.phone ? `tel:${esc(f.phone.replace(/[^\d+]/g, ''))}` : '';
   const inner = `
@@ -265,19 +343,20 @@ function scheduleBoard(f, { compact = false } = {}) {
       <h2 class="board-name">${nameSegments(f.name || '名称未設定')}</h2>
       <span class="pill ${st.cls}">${st.cls === 'open' ? '<span class="live"></span>' : icon('clock')}${esc(st.label)}</span>
     </div>
+    ${apptBanner(f)}
     ${sessions.length ? `<div class="table-wrap"><table class="hours">
       <thead><tr><th class="time-col">診療時間</th>${DAYS.map((d, i) => `<th class="${i === td ? 'today' : ''}">${d}</th>`).join('')}</tr></thead>
-      <tbody>${sessions.map((s) => {
+      <tbody>${sessions.map((s, idx) => {
         const rowCls = s === current ? 'now-row' : '';
-        return `<tr class="${rowCls}">
-        <th class="time-col">${fmtTime(s.start)}<span class="tilde">〜</span>${fmtTime(s.end)}</th>
+        return `${idx === lineAt ? nowLine : ''}<tr class="${rowCls}">
+        <th class="time-col">${s === current ? `<span class="now-tag in">いま ${label}</span>` : ''}${fmtTime(s.start)}<span class="tilde">〜</span>${fmtTime(s.end)}</th>
         ${DAYS.map((_, i) => {
           const isToday = i === td;
           const mark = isToday && s === current ? ' now' : isToday && s === next ? ' next' : '';
           return `<td class="${isToday ? 'today' : ''}${mark}">${s.days?.[i] ? '<span class="dot" aria-label="診療"></span>' : '<span class="dash" aria-label="休診"></span>'}</td>`;
         }).join('')}
       </tr>`;
-      }).join('')}</tbody>
+      }).join('')}${lineAt === sessions.length ? nowLine : ''}</tbody>
     </table></div>` : '<p class="muted-text pad">診療時間が登録されていません</p>'}
     ${closed ? `<p class="closed-days"><span>休診日</span>${esc(closed)}</p>` : ''}
     ${!compact && f.notes ? `<p class="notes">${esc(f.notes)}</p>` : ''}`;
@@ -326,6 +405,7 @@ function viewDetail(id) {
       ${map ? `<a class="action" href="${esc(map)}" target="_blank" rel="noopener">${icon('mapPin')}<span>地図</span></a>` : ''}
       ${site ? `<a class="action" href="${esc(site)}" target="_blank" rel="noopener">${icon('globe')}<span>公式サイト</span></a>` : ''}
     </div>
+    ${apptSection(f)}
     ${f.address ? `<div class="info-row">${icon('mapPin')}<span>${esc(f.address)}</span></div>` : ''}
     ${site ? `<a class="notice" href="${esc(site)}" target="_blank" rel="noopener">
       ${icon('calendarOff')}<span>臨時休診・年末年始は公式サイトで確認</span>${icon('external', 'chev')}
@@ -334,7 +414,53 @@ function viewDetail(id) {
   </main>`;
 }
 
+function apptSection(f) {
+  const list = upcomingAppts(f);
+  const d = new Date(Date.now() + 86400000);
+  const min = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T09:00`;
+  return `<section class="card appt">
+    <div class="card-title">${icon('calendar')}予約</div>
+    ${list.length ? `<ul class="appt-list">${list.map((a) => `<li>
+      <span class="appt-main"><span class="appt-when">${apptDate(a.at)}</span>${a.memo ? `<span class="appt-memo">${esc(a.memo)}</span>` : ''}</span>
+      <span class="appt-rel">${apptRelative(a.at)}</span>
+      <button class="icon-btn sm" data-del-appt="${esc(a.at)}" aria-label="予約を削除">${icon('trash')}</button>
+    </li>`).join('')}</ul>` : '<p class="muted-text">予約はありません</p>'}
+    <form id="appt-form" class="appt-form">
+      <input type="datetime-local" id="appt-at" required value="" data-placeholder="${min}" aria-label="予約日時">
+      <input id="appt-memo" placeholder="メモ（任意）例: 定期検診" maxlength="40" aria-label="メモ">
+      <button class="btn primary" type="submit">${icon('plus')}予約を追加</button>
+    </form>
+  </section>`;
+}
+
 function bindDetail(id) {
+  const f0 = state.facilities.find((x) => x.id === id);
+  const form = document.getElementById('appt-form');
+  if (form && f0) {
+    const at = document.getElementById('appt-at');
+    at.onfocus = () => { if (!at.value) at.value = at.dataset.placeholder; };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const memo = document.getElementById('appt-memo').value.trim();
+      if (!at.value) { toast('日時を選んでください'); return; }
+      const f = state.facilities.find((x) => x.id === id);
+      const appointments = [...(f.appointments || []).filter((a) => new Date(a.at).getTime() > Date.now() - 30 * 86400000), { at: at.value, memo }]
+        .sort((a, b) => a.at.localeCompare(b.at));
+      at.value = '';
+      document.getElementById('appt-memo').value = '';
+      at.blur();
+      updateDoc(doc(facilitiesRef(), id), { appointments }).catch((err) => toast(`保存に失敗しました: ${err.message}`));
+      toast('予約を登録しました');
+    };
+    document.querySelectorAll('[data-del-appt]').forEach((b) => {
+      b.onclick = () => {
+        const f = state.facilities.find((x) => x.id === id);
+        if (!confirm(`${apptDate(b.dataset.delAppt)} の予約を削除しますか？`)) return;
+        const appointments = (f.appointments || []).filter((a) => a.at !== b.dataset.delAppt);
+        updateDoc(doc(facilitiesRef(), id), { appointments }).catch((err) => toast(`削除に失敗しました: ${err.message}`));
+      };
+    });
+  }
   const btn = document.getElementById('refresh-ai');
   if (!btn) return;
   btn.onclick = async () => {
@@ -761,7 +887,7 @@ function bindSettings() {
 // 時刻表示（診療中など）を1分ごとに更新
 setInterval(() => {
   const sheetOpen = document.getElementById('sheet')?.hidden === false;
-  if (state.user && !isEditing() && !sheetOpen && parseRoute().parts[0] !== 'settings') render();
+  if (state.user && !isEditing() && !sheetOpen && !isTyping() && parseRoute().parts[0] !== 'settings') render();
 }, 60000);
 
 render();

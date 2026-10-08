@@ -342,3 +342,55 @@ textarea { resize: vertical; }
 .opt { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 12px; background: var(--bg); font-weight: 600; font-size: 14px; }
 .opt .i { width: 20px; height: 20px; color: var(--primary-strong); }
 .opt:active { background: var(--primary-soft); }
+
+/* 重ねたカード */
+.stack { display: flex; flex-direction: column; }
+.strip {
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  min-height: 78px; padding: 12px 16px 26px; margin-bottom: -16px;
+  border: 1px solid var(--line); border-radius: 18px; background: var(--surface);
+  box-shadow: 0 -4px 14px rgba(20, 40, 35, .07); transition: transform .15s;
+}
+.strip:active { transform: translateY(-3px); }
+.strip-icon { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-strong); flex: none; }
+.strip-icon .i { width: 19px; height: 19px; }
+.strip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.strip-name { font-weight: 700; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.strip-sub { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; }
+.strip-sub .i { width: 13px; height: 13px; color: var(--soon); }
+.stack-active { position: relative; }
+.stack-active .board { box-shadow: 0 -6px 18px rgba(20, 40, 35, .1), var(--shadow); }
+
+/* 今の時刻の位置 */
+.hours td.today { background: color-mix(in srgb, var(--primary) 5%, transparent); }
+.hours thead th.today { background: var(--primary-strong); }
+.now-tag {
+  display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.6;
+  background: var(--soon); color: #fff; letter-spacing: .02em;
+}
+.now-tag.in { display: block; width: fit-content; margin-bottom: 2px; background: var(--open); }
+.hours tr.now-line td { padding: 0 !important; height: 0; border: 0 !important; position: relative; background: none !important; }
+.hours tr.now-line td::before {
+  content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--soon);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--soon) 70%, transparent);
+}
+.hours tr.now-line .now-tag { position: absolute; left: 6px; top: -10px; z-index: 1; box-shadow: 0 0 10px color-mix(in srgb, var(--soon) 60%, transparent); }
+
+/* 予約 */
+.appt-banner {
+  display: flex; align-items: center; gap: 10px; margin: 0 12px 12px; padding: 10px 12px;
+  border-radius: 12px; background: color-mix(in srgb, var(--soon) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--soon) 35%, transparent);
+}
+.appt-banner > .i { color: var(--soon); width: 22px; height: 22px; }
+.appt-banner.soon { background: color-mix(in srgb, var(--soon) 20%, var(--surface)); border-color: var(--soon); }
+.appt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; }
+.appt-label { font-size: 11px; font-weight: 700; color: var(--soon); }
+.appt-when { font-weight: 700; font-size: 15px; }
+.appt-memo { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appt-rel { flex: none; font-size: 13px; font-weight: 700; color: var(--soon); }
+.card.appt { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin-top: 14px; }
+.appt-list { list-style: none; margin: 0 0 12px; padding: 0; }
+.appt-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.appt-form { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.appt-form input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; min-height: 44px; }
+.appt-form .btn { min-height: 44px; }
