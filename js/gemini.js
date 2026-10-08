@@ -23,14 +23,22 @@ const PROMPT = `あなたは日本の医療機関の情報を整理するアシ�
 - days は月曜から日曜の順。その時間帯に診療している曜日を true。
 - 読み取れない項目は null。推測で埋めない。`;
 
-export async function extractSchedule({ apiKey, model, url, text, image }) {
+export async function extractSchedule({ apiKey, model, url, text, image, department }) {
   if (!apiKey) throw new Error('設定画面で Gemini API キーを登録してください。');
   const parts = [{ text: PROMPT }];
   const body = { contents: [{ role: 'user', parts }], generationConfig: { temperature: 0 } };
 
+  if (department) {
+    parts.push({ text: `診療科ごとに時間が違う場合は「${department}」の外来診療時間を答えてください。` });
+  }
   if (url) {
-    parts.push({ text: `情報源のURL: ${url}\nこのページ（必要ならリンク先の診療案内ページ）を読んで回答してください。` });
-    body.tools = [{ url_context: {} }];
+    let host = '';
+    try { host = new URL(url).hostname; } catch { /* 不正なURLはそのまま渡す */ }
+    parts.push({ text: `情報源のURL: ${url}
+まずこのページを読んでください。診療時間が載っていなければ、Google 検索（例: "site:${host} 外来 診療時間"）で同じサイト内の外来案内・診療時間・担当医表のページを探して読んでください。
+このサイト（${host}）以外の情報は使わないでください。` });
+    // URL の読み込みに加え、トップページに時間が無いサイト向けにサイト内検索もできるようにする
+    body.tools = [{ url_context: {} }, { google_search: {} }];
   }
   if (text) parts.push({ text: `情報源のテキスト:\n${text}` });
   if (image) parts.push({ inline_data: { mime_type: image.mimeType, data: image.base64 } });

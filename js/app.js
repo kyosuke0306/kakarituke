@@ -321,9 +321,9 @@ function bindDetail(id) {
   btn.onclick = async () => {
     const f = state.facilities.find((x) => x.id === id);
     btn.disabled = true;
-    btn.innerHTML = `<span class="spinner sm"></span>読み取り中…`;
+    btn.innerHTML = `<span class="spinner sm"></span>読み取り中…（最大1分ほど）`;
     try {
-      const data = await runExtract({ url: f.url });
+      const data = await runExtract({ url: f.url, department: f.department });
       if (!data.sessions.length) throw new Error(NO_SESSIONS_MSG);
       pendingDraft = structuredClone({ ...f, sessions: data.sessions, reservation: data.reservation || f.reservation, closedOnHolidays: data.closedOnHolidays, notes: data.notes || f.notes });
       go(`#/edit/${id}`);
@@ -485,9 +485,9 @@ function bindEditor(id) {
   const aiRun = async (btn, input) => {
     const label = btn.innerHTML;
     document.querySelectorAll('.ai button, .ai label.btn').forEach((b) => b.classList.add('busy'));
-    btn.innerHTML = '<span class="spinner sm"></span>読み取り中…';
+    btn.innerHTML = '<span class="spinner sm"></span>読み取り中…（最大1分ほど）';
     try {
-      const data = await runExtract(input);
+      const data = await runExtract({ ...input, department: draft.department });
       if (data.sessions.length) draft.sessions = data.sessions;
       draft.reservation = data.reservation || draft.reservation;
       draft.closedOnHolidays = data.closedOnHolidays;
