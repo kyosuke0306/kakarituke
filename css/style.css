@@ -290,3 +290,55 @@ textarea { resize: vertical; }
 .divider { display: flex; align-items: center; gap: 10px; margin: 6px 0 12px; font-size: 12px; color: var(--sub); }
 .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .result.picked.busy { opacity: 1; }
+
+/* ホームのカード */
+.filters { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 12px; scrollbar-width: none; }
+.filters::-webkit-scrollbar { display: none; }
+.filters .chip { display: inline-flex; align-items: center; gap: 4px; flex: none; padding: 6px 12px; font-size: 13px; }
+.filters .chip .i { width: 16px; height: 16px; }
+.cards { display: flex; flex-direction: column; gap: 16px; }
+.board-link { display: block; color: inherit; }
+.board-link:active { opacity: .85; }
+.board.compact { margin-top: 0; }
+.board.compact .board-head { padding: 14px 16px 12px; }
+.board.compact .board-name { font-size: 21px; margin: 2px 0 8px; }
+.board-cat { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--primary-strong); }
+.board-cat .i { width: 15px; height: 15px; }
+.board.compact .hours thead th { padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
+.board.compact .hours tbody th, .board.compact .hours tbody td { padding-top: 10px; padding-bottom: 10px; }
+.board.compact .closed-days { margin-top: 10px; font-size: 14px; }
+.board.compact .board-foot { margin-top: 12px; padding: 10px 16px; }
+.board.compact .board-tel { font-size: 18px; }
+.add-more {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 16px; padding: 12px;
+  border: 1px dashed var(--line); border-radius: 14px; background: transparent; color: var(--sub); font-size: 14px; font-weight: 600;
+}
+.add-more .i { width: 18px; height: 18px; }
+
+/* 今の時間帯を光らせる */
+.live { width: 8px; height: 8px; border-radius: 50%; background: var(--open); box-shadow: 0 0 0 0 var(--open); animation: live 1.6s ease-out infinite; }
+@keyframes live { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--open) 60%, transparent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+.hours tr.now-row th, .hours tr.now-row td { background: color-mix(in srgb, var(--primary) 9%, transparent); }
+.hours tr.now-row th { color: var(--primary-strong); }
+.hours td.now { position: relative; background: color-mix(in srgb, var(--primary) 22%, transparent) !important; }
+.hours td.now .dot { width: 18px; height: 18px; background: var(--open); animation: glow 1.6s ease-in-out infinite; }
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--open) 25%, transparent), 0 0 10px 2px color-mix(in srgb, var(--open) 55%, transparent); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--open) 15%, transparent), 0 0 18px 6px color-mix(in srgb, var(--open) 70%, transparent); }
+}
+.hours td.next .dot { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px color-mix(in srgb, var(--soon) 70%, transparent); }
+@media (prefers-reduced-motion: reduce) { .live, .hours td.now .dot { animation: none; } }
+
+/* 登録の種類を選ぶシート */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, .35); display: flex; align-items: flex-end; justify-content: center; }
+.sheet-backdrop[hidden] { display: none; }
+.sheet {
+  width: 100%; max-width: 560px; background: var(--surface); border-radius: 20px 20px 0 0;
+  padding: 14px 16px calc(20px + env(safe-area-inset-bottom)); animation: up .18s ease-out;
+}
+@keyframes up { from { transform: translateY(30px); opacity: 0; } }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; margin-bottom: 10px; }
+.sheet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.opt { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 12px; background: var(--bg); font-weight: 600; font-size: 14px; }
+.opt .i { width: 20px; height: 20px; color: var(--primary-strong); }
+.opt:active { background: var(--primary-soft); }

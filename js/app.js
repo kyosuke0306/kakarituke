@@ -155,7 +155,7 @@ function header({ title, back, actions = '' }) {
   return `<header class="bar">
     ${back ? `<a class="icon-btn" href="${back}" aria-label="戻る">${icon('back')}</a>` : `<span class="brand">${icon('logo')}</span>`}
     <h1 class="bar-title">${esc(title)}</h1>
-    <div class="bar-actions">${actions}${back ? `<a class="icon-btn" href="#/" aria-label="ホーム">${icon('home')}</a>` : ''}</div>
+    <div class="bar-actions">${actions}${back && back !== '#/' ? `<a class="icon-btn" href="#/" aria-label="ホーム">${icon('home')}</a>` : ''}</div>
   </header>`;
 }
 
@@ -166,17 +166,13 @@ function render() {
 
   const { parts } = parseRoute();
   const [p0, p1, p2] = parts;
-  if (p0 === 'c' && p1) {
-    const cat = catOf(p1);
-    if (cat.hasDept && !p2) { $app.innerHTML = viewDepts(cat); return; }
-    $app.innerHTML = viewList(cat, p2 || '');
-    return;
-  }
+  if (p0 === 'c' && p1) { state.homeFilter = p1; go('#/'); return; } // 旧URLの互換
   if (p0 === 'f' && p1) { $app.innerHTML = viewDetail(p1); fitBoardName(); bindDetail(p1); return; }
   if (p0 === 'new') { openEditor(null, p1 || 'hospital', p2 || ''); return; }
   if (p0 === 'edit' && p1) { openEditor(p1); return; }
   if (p0 === 'settings') { $app.innerHTML = viewSettings(); bindSettings(); return; }
   $app.innerHTML = viewHome();
+  bindHome();
 }
 
 // ---------- 画面 ----------
@@ -199,93 +195,97 @@ function viewLogin() {
 function bindLogin() { document.getElementById('login').onclick = login; }
 
 function viewHome() {
-  const counts = (id) => state.facilities.filter((f) => f.category === id).length;
-  return `${header({ title: 'かかりつけ', actions: `<a class="icon-btn" href="#/settings" aria-label="設定">${icon('settings')}</a>` })}
+  const cats = CATEGORIES.filter((c) => state.facilities.some((f) => f.category === c.id));
+  const filter = cats.some((c) => c.id === state.homeFilter) ? state.homeFilter : '';
+  const items = state.facilities.filter((f) => !filter || f.category === filter);
+  const addBtn = `<button class="icon-btn" data-open-sheet aria-label="登録">${icon('plus')}</button>`;
+  return `${header({ title: 'かかりつけ', actions: `${addBtn}<a class="icon-btn" href="#/settings" aria-label="設定">${icon('settings')}</a>` })}
   <main class="page">
-    <div class="tiles">
-      ${CATEGORIES.map((c) => `<a class="tile" href="#/c/${c.id}">
-        <span class="tile-icon">${icon(c.icon)}</span>
-        <span class="tile-label">${c.label}</span>
-        <span class="tile-count">${state.loaded ? `${counts(c.id)}件` : ''}</span>
-      </a>`).join('')}
+    ${cats.length > 1 ? `<div class="filters">
+      <button class="chip ${!filter ? 'on' : ''}" data-filter="">すべて</button>
+      ${cats.map((c) => `<button class="chip ${filter === c.id ? 'on' : ''}" data-filter="${c.id}">${icon(c.icon)}${c.label}</button>`).join('')}
+    </div>` : ''}
+    ${!state.loaded ? '<div class="center"><div class="spinner"></div></div>'
+      : items.length ? `<div class="cards">${items.map((f) => scheduleBoard(f, { compact: true })).join('')}</div>
+        <button class="add-more" data-open-sheet>${icon('plus')}施設を登録</button>`
+      : `<div class="empty">
+          <div class="empty-icon">${icon('logo')}</div>
+          <p>かかりつけの施設を登録すると<br>ここに診療時間が表示されます</p>
+          <button class="btn primary" data-open-sheet>${icon('plus')}施設を登録</button>
+        </div>`}
+  </main>
+  <div class="sheet-backdrop" id="sheet" hidden>
+    <div class="sheet" role="dialog" aria-label="登録する種類">
+      <div class="sheet-head"><span>登録する種類</span><button class="icon-btn sm" data-close-sheet aria-label="閉じる">${icon('close')}</button></div>
+      <div class="sheet-grid">${newOptions().map((o) => `<a class="opt" href="${o.href}">${icon(o.icon)}<span>${esc(o.label)}</span></a>`).join('')}</div>
+      <a class="link-btn" href="#/settings">${icon('settings')}表示する診療科を変更</a>
     </div>
-    ${state.facilities.length ? `<h2 class="section-title">登録済み</h2>
-      <div class="list">${state.facilities.map(facilityRow).join('')}</div>` : ''}
-  </main>`;
+  </div>`;
 }
 
-function facilityRow(f) {
-  const st = statusOf(f);
-  const cat = catOf(f.category);
-  const sub = [cat.label, f.department].filter(Boolean).join(' · ');
-  return `<a class="row" href="#/f/${f.id}">
-    <span class="row-icon">${icon(cat.icon)}</span>
-    <span class="row-body">
-      <span class="row-title">${esc(f.name || '名称未設定')}</span>
-      <span class="row-sub">${esc(sub)}</span>
-    </span>
-    <span class="pill ${st.cls}">${esc(st.label)}</span>
-    ${icon('chevronRight', 'chev')}
-  </a>`;
+function newOptions() {
+  return CATEGORIES.flatMap((c) => (c.hasDept
+    ? (state.settings.departments?.length ? state.settings.departments : ['内科'])
+      .map((d) => ({ href: `#/new/${c.id}/${encodeURIComponent(d)}`, icon: c.icon, label: `${c.label}・${d}` }))
+    : [{ href: `#/new/${c.id}`, icon: c.icon, label: c.label }]));
 }
 
-function viewDepts(cat) {
-  const depts = state.settings.departments?.length ? state.settings.departments : ['内科'];
-  return `${header({ title: cat.label, back: '#/' })}
-  <main class="page">
-    <div class="list">
-      ${depts.map((d) => {
-        const n = state.facilities.filter((f) => f.category === cat.id && f.department === d).length;
-        return `<a class="row" href="#/c/${cat.id}/${encodeURIComponent(d)}">
-          <span class="row-icon">${icon('stethoscope')}</span>
-          <span class="row-body"><span class="row-title">${esc(d)}</span></span>
-          <span class="row-count">${n}件</span>
-          ${icon('chevronRight', 'chev')}
-        </a>`;
-      }).join('')}
-    </div>
-    <a class="link-btn" href="#/settings">${icon('settings')}表示する診療科を変更</a>
-  </main>`;
+function bindHome() {
+  const sheet = document.getElementById('sheet');
+  document.querySelectorAll('[data-open-sheet]').forEach((b) => { b.onclick = () => { sheet.hidden = false; }; });
+  sheet.onclick = (e) => { if (e.target === sheet || e.target.closest('[data-close-sheet]')) sheet.hidden = true; };
+  document.querySelectorAll('[data-filter]').forEach((b) => {
+    b.onclick = () => { state.homeFilter = b.dataset.filter; render(); };
+  });
+  fitBoardName();
 }
 
-function viewList(cat, dept) {
-  const items = state.facilities.filter((f) => f.category === cat.id && (!cat.hasDept || f.department === dept));
-  const title = dept || cat.label;
-  const back = cat.hasDept ? `#/c/${cat.id}` : '#/';
-  const newHref = `#/new/${cat.id}${dept ? `/${encodeURIComponent(dept)}` : ''}`;
-  return `${header({ title, back, actions: `<a class="icon-btn" href="${newHref}" aria-label="追加">${icon('plus')}</a>` })}
-  <main class="page">
-    ${items.length ? `<div class="list">${items.map(facilityRow).join('')}</div>`
-      : state.loaded ? `<div class="empty">
-        <div class="empty-icon">${icon(cat.icon)}</div>
-        <p>まだ登録されていません</p>
-        <a class="btn primary" href="${newHref}">${icon('plus')}登録する</a>
-      </div>` : `<div class="center"><div class="spinner"></div></div>`}
-  </main>`;
+// 今の時刻に当たる時間帯（診療中）と、本日この後の時間帯を求める
+function nowMarks(sessions) {
+  const d = todayIdx();
+  const now = new Date();
+  const m = now.getHours() * 60 + now.getMinutes();
+  const today = sessions.filter((s) => s.days?.[d]);
+  const current = today.find((s) => toMin(s.start) <= m && m < toMin(s.end));
+  const next = current ? null : today.find((s) => m < toMin(s.start));
+  return { current, next };
 }
 
-function scheduleBoard(f) {
+function scheduleBoard(f, { compact = false } = {}) {
   const sessions = sortedSessions(f);
   const td = todayIdx();
   const st = statusOf(f);
   const closed = closedDaysText(f);
-  return `<section class="board">
+  const { current, next } = nowMarks(sessions);
+  const cat = catOf(f.category);
+  const tel = f.phone ? `tel:${esc(f.phone.replace(/[^\d+]/g, ''))}` : '';
+  const inner = `
     <div class="board-head">
+      ${compact ? `<span class="board-cat">${icon(cat.icon)}${esc([cat.label, f.department].filter(Boolean).join('・'))}</span>` : ''}
       <h2 class="board-name">${nameSegments(f.name || '名称未設定')}</h2>
-      <span class="pill ${st.cls}">${icon('clock')}${esc(st.label)}</span>
+      <span class="pill ${st.cls}">${st.cls === 'open' ? '<span class="live"></span>' : icon('clock')}${esc(st.label)}</span>
     </div>
     ${sessions.length ? `<div class="table-wrap"><table class="hours">
-      <thead><tr><th class="time-col">診療時間</th>${DAYS.map((d, i) => `<th class="${i === td ? 'today' : ''}${i === 5 ? ' sat' : ''}${i === 6 ? ' sun' : ''}">${d}</th>`).join('')}</tr></thead>
-      <tbody>${sessions.map((s) => `<tr>
+      <thead><tr><th class="time-col">診療時間</th>${DAYS.map((d, i) => `<th class="${i === td ? 'today' : ''}">${d}</th>`).join('')}</tr></thead>
+      <tbody>${sessions.map((s) => {
+        const rowCls = s === current ? 'now-row' : '';
+        return `<tr class="${rowCls}">
         <th class="time-col">${fmtTime(s.start)}<span class="tilde">〜</span>${fmtTime(s.end)}</th>
-        ${DAYS.map((_, i) => `<td class="${i === td ? 'today' : ''}">${s.days?.[i] ? '<span class="dot" aria-label="診療"></span>' : '<span class="dash" aria-label="休診"></span>'}</td>`).join('')}
-      </tr>`).join('')}</tbody>
-    </table></div>` : `<p class="muted-text pad">診療時間が登録されていません</p>`}
+        ${DAYS.map((_, i) => {
+          const isToday = i === td;
+          const mark = isToday && s === current ? ' now' : isToday && s === next ? ' next' : '';
+          return `<td class="${isToday ? 'today' : ''}${mark}">${s.days?.[i] ? '<span class="dot" aria-label="診療"></span>' : '<span class="dash" aria-label="休診"></span>'}</td>`;
+        }).join('')}
+      </tr>`;
+      }).join('')}</tbody>
+    </table></div>` : '<p class="muted-text pad">診療時間が登録されていません</p>'}
     ${closed ? `<p class="closed-days"><span>休診日</span>${esc(closed)}</p>` : ''}
-    ${f.notes ? `<p class="notes">${esc(f.notes)}</p>` : ''}
+    ${!compact && f.notes ? `<p class="notes">${esc(f.notes)}</p>` : ''}`;
+  return `<section class="board${compact ? ' compact' : ''}">
+    ${compact ? `<a class="board-link" href="#/f/${f.id}" aria-label="${esc(f.name)}の詳細">${inner}</a>` : inner}
     <div class="board-foot">
       ${f.reservation ? '<span class="badge">予約優先</span>' : '<span></span>'}
-      ${f.phone ? `<a class="board-tel" href="tel:${esc(f.phone.replace(/[^\d+]/g, ''))}">${icon('phone')}${esc(f.phone)}</a>` : ''}
+      ${f.phone ? `<a class="board-tel" href="${tel}">${icon('phone')}${esc(f.phone)}</a>` : ''}
     </div>
   </section>`;
 }
@@ -297,8 +297,9 @@ function nameSegments(name) {
 
 // 1語が画面幅に収まらない場合は文字を小さくする
 function fitBoardName() {
-  const el = document.querySelector('.board-name');
-  if (!el) return;
+  document.querySelectorAll('.board-name').forEach(fitOne);
+}
+function fitOne(el) {
   el.style.fontSize = '';
   let size = parseFloat(getComputedStyle(el).fontSize);
   const tooWide = () => [...el.children].some((c) => c.scrollWidth > el.clientWidth + 1);
@@ -314,7 +315,7 @@ function viewDetail(id) {
     return `${header({ title: '', back: '#/' })}<main class="page">${state.loaded ? '<p class="muted-text pad">見つかりません</p>' : '<div class="center"><div class="spinner"></div></div>'}</main>`;
   }
   const cat = catOf(f.category);
-  const back = cat.hasDept ? `#/c/${cat.id}/${encodeURIComponent(f.department || '')}` : `#/c/${cat.id}`;
+  const back = '#/';
   const site = safeUrl(f.url);
   const map = mapUrl(f);
   return `${header({ title: [cat.label, f.department].filter(Boolean).join(' · '), back, actions: `<a class="icon-btn" href="#/edit/${f.id}" aria-label="編集">${icon('edit')}</a>` })}
@@ -382,7 +383,7 @@ function viewEditor(id) {
   const d = draft;
   const cat = catOf(d.category);
   const depts = [...new Set([...(state.settings.departments || []), d.department].filter(Boolean))];
-  return `${header({ title: id ? '編集' : '新規登録', back: id ? `#/f/${id}` : (cat.hasDept ? `#/c/${cat.id}/${encodeURIComponent(d.department)}` : `#/c/${cat.id}`) })}
+  return `${header({ title: id ? '編集' : '新規登録', back: id ? `#/f/${id}` : '#/' })}
   <main class="page form">
     <section class="card ai">
       <div class="ai-head">${icon('sparkle')}<span>AI で自動入力</span></div>
@@ -631,8 +632,7 @@ function bindEditor(id) {
   if ($('delete')) {
     $('delete').onclick = () => {
       if (!confirm(`「${draft.name}」を削除しますか？`)) return;
-      const cat = catOf(draft.category);
-      const back = cat.hasDept ? `#/c/${cat.id}/${encodeURIComponent(draft.department)}` : `#/c/${cat.id}`;
+      const back = '#/';
       deleteDoc(doc(facilitiesRef(), id)).catch((err) => toast(`削除に失敗しました: ${err.message}`));
       draft = null;
       toast('削除しました');
@@ -759,6 +759,9 @@ function bindSettings() {
 }
 
 // 時刻表示（診療中など）を1分ごとに更新
-setInterval(() => { if (state.user && !isEditing() && parseRoute().parts[0] !== 'settings') render(); }, 60000);
+setInterval(() => {
+  const sheetOpen = document.getElementById('sheet')?.hidden === false;
+  if (state.user && !isEditing() && !sheetOpen && parseRoute().parts[0] !== 'settings') render();
+}, 60000);
 
 render();
