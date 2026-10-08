@@ -164,17 +164,18 @@ function header({ title, back, actions = '' }) {
   return `<header class="bar">
     ${back ? `<a class="icon-btn" href="${back}" aria-label="戻る">${icon('back')}</a>` : `<span class="brand">${icon('logo')}</span>`}
     <h1 class="bar-title">${esc(title)}</h1>
-    <div class="bar-actions">${actions}${back && back !== '#/' ? `<a class="icon-btn" href="#/" aria-label="ホーム">${icon('home')}</a>` : ''}</div>
+    <div class="bar-actions">${actions}</div>
   </header>`;
 }
 
 function render() {
   if (!configured) { $app.innerHTML = viewSetup(); return; }
   if (!state.authReady) { $app.innerHTML = `<div class="center"><div class="spinner"></div></div>`; return; }
-  if (!state.user) { $app.innerHTML = viewLogin(); bindLogin(); return; }
+  if (!state.user) { renderNav(); $app.innerHTML = viewLogin(); bindLogin(); return; }
 
   const { parts } = parseRoute();
   const [p0, p1, p2] = parts;
+  renderNav(p0 === 'settings' ? 'settings' : !p0 ? 'home' : '');
   if (p0 === 'c' && p1) { state.homeFilter = p1; go('#/'); return; } // 旧URLの互換
   if (p0 === 'f' && p1) { $app.innerHTML = viewDetail(p1); fitBoardName(); bindDetail(p1); return; }
   if (p0 === 'new') { openEditor(null, p1 || 'hospital', p2 || ''); return; }
@@ -243,8 +244,7 @@ function viewHome() {
   const cats = CATEGORIES.filter((c) => state.facilities.some((f) => f.category === c.id));
   const filter = cats.some((c) => c.id === state.homeFilter) ? state.homeFilter : '';
   const items = state.facilities.filter((f) => !filter || f.category === filter);
-  const addBtn = `<button class="icon-btn" data-open-sheet aria-label="登録">${icon('plus')}</button>`;
-  return `${header({ title: 'かかりつけ', actions: `${addBtn}<a class="icon-btn" href="#/settings" aria-label="設定">${icon('settings')}</a>` })}
+  return `${header({ title: 'かかりつけ' })}
   <main class="page">
     ${cats.length > 1 ? `<div class="filters">
       <button class="chip ${!filter ? 'on' : ''}" data-filter="">すべて</button>
@@ -258,15 +258,37 @@ function viewHome() {
           <p>かかりつけの施設を登録すると<br>ここに診療時間が表示されます</p>
           <button class="btn primary" data-open-sheet>${icon('plus')}施設を登録</button>
         </div>`}
-  </main>
-  <div class="sheet-backdrop" id="sheet" hidden>
-    <div class="sheet" role="dialog" aria-label="登録する種類">
-      <div class="sheet-head"><span>登録する種類</span><button class="icon-btn sm" data-close-sheet aria-label="閉じる">${icon('close')}</button></div>
-      <div class="sheet-grid">${newOptions().map((o) => `<a class="opt" href="${o.href}">${icon(o.icon)}<span>${esc(o.label)}</span></a>`).join('')}</div>
-      <a class="link-btn" href="#/settings">${icon('settings')}表示する診療科を変更</a>
-    </div>
-  </div>`;
+  </main>`;
 }
+
+// ---------- 画面下のタブと登録シート ----------
+const $nav = document.getElementById('nav');
+const $sheet = document.getElementById('sheet');
+
+function renderNav(active) {
+  if (!state.user) { $nav.hidden = true; return; }
+  $nav.hidden = false;
+  const tab = (key, href, ic, label) => `<a class="tab${active === key ? ' on' : ''}" href="${href}">${icon(ic)}<span>${label}</span></a>`;
+  $nav.innerHTML = `${tab('home', '#/', 'home', 'ホーム')}
+    <button class="tab add" data-open-sheet><span class="tab-plus">${icon('plus')}</span><span>登録</span></button>
+    ${tab('settings', '#/settings', 'settings', '設定')}`;
+}
+
+function openSheet() {
+  $sheet.innerHTML = `<div class="sheet" role="dialog" aria-label="登録する種類">
+    <div class="sheet-head"><span>登録する種類</span><button class="icon-btn sm" data-close-sheet aria-label="閉じる">${icon('close')}</button></div>
+    <div class="sheet-grid">${newOptions().map((o) => `<a class="opt" href="${o.href}">${icon(o.icon)}<span>${esc(o.label)}</span></a>`).join('')}</div>
+    <a class="link-btn" href="#/settings">${icon('settings')}表示する診療科を変更</a>
+  </div>`;
+  $sheet.hidden = false;
+}
+const closeSheet = () => { $sheet.hidden = true; };
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('[data-open-sheet]')) openSheet();
+  else if (e.target === $sheet || e.target.closest('[data-close-sheet]') || e.target.closest('#sheet a')) closeSheet();
+});
+window.addEventListener('hashchange', closeSheet);
 
 // 財布のカードのように重ねる。選択中のカードだけ全体を表示し、他は上部だけ見せる
 function stackedCards(items) {
@@ -298,9 +320,6 @@ function newOptions() {
 }
 
 function bindHome() {
-  const sheet = document.getElementById('sheet');
-  document.querySelectorAll('[data-open-sheet]').forEach((b) => { b.onclick = () => { sheet.hidden = false; }; });
-  sheet.onclick = (e) => { if (e.target === sheet || e.target.closest('[data-close-sheet]')) sheet.hidden = true; };
   document.querySelectorAll('[data-activate]').forEach((b) => {
     b.onclick = () => {
       state.activeId = b.dataset.activate;
@@ -315,7 +334,7 @@ function bindHome() {
   fitBoardName();
 }
 
-// 今の時刻に当たる時間帯（診療中）と、本日この後の時間帯、表の中の「いま」の位置を求める
+// 今の時刻に当たる時間帯（診療中）と、本日この後の時間帯を求める（終了後はどちらも無し）
 function nowMarks(sessions) {
   const d = todayIdx();
   const now = new Date();
@@ -323,9 +342,7 @@ function nowMarks(sessions) {
   const today = sessions.filter((s) => s.days?.[d]);
   const current = today.find((s) => toMin(s.start) <= m && m < toMin(s.end));
   const next = current ? null : today.find((s) => m < toMin(s.start));
-  // 診療時間外のときは、時刻順で「いま」が入る行の位置（この行の前に線を引く）
-  const lineAt = current ? -1 : sessions.filter((s) => toMin(s.end) <= m).length;
-  return { current, next, lineAt, label: `${now.getHours()}:${pad2(now.getMinutes())}` };
+  return { current, next };
 }
 
 function scheduleBoard(f, { compact = false } = {}) {
@@ -333,8 +350,7 @@ function scheduleBoard(f, { compact = false } = {}) {
   const td = todayIdx();
   const st = statusOf(f);
   const closed = closedDaysText(f);
-  const { current, next, lineAt, label } = nowMarks(sessions);
-  const nowLine = `<tr class="now-line"><td colspan="8"><span class="now-tag">いま ${label}</span></td></tr>`;
+  const { current, next } = nowMarks(sessions);
   const cat = catOf(f.category);
   const tel = f.phone ? `tel:${esc(f.phone.replace(/[^\d+]/g, ''))}` : '';
   const inner = `
@@ -346,17 +362,17 @@ function scheduleBoard(f, { compact = false } = {}) {
     ${apptBanner(f)}
     ${sessions.length ? `<div class="table-wrap"><table class="hours">
       <thead><tr><th class="time-col">診療時間</th>${DAYS.map((d, i) => `<th class="${i === td ? 'today' : ''}">${d}</th>`).join('')}</tr></thead>
-      <tbody>${sessions.map((s, idx) => {
+      <tbody>${sessions.map((s) => {
         const rowCls = s === current ? 'now-row' : '';
-        return `${idx === lineAt ? nowLine : ''}<tr class="${rowCls}">
-        <th class="time-col">${s === current ? `<span class="now-tag in">いま ${label}</span>` : ''}${fmtTime(s.start)}<span class="tilde">〜</span>${fmtTime(s.end)}</th>
+        return `<tr class="${rowCls}">
+        <th class="time-col">${fmtTime(s.start)}<span class="tilde">〜</span>${fmtTime(s.end)}</th>
         ${DAYS.map((_, i) => {
           const isToday = i === td;
           const mark = isToday && s === current ? ' now' : isToday && s === next ? ' next' : '';
           return `<td class="${isToday ? 'today' : ''}${mark}">${s.days?.[i] ? '<span class="dot" aria-label="診療"></span>' : '<span class="dash" aria-label="休診"></span>'}</td>`;
         }).join('')}
       </tr>`;
-      }).join('')}${lineAt === sessions.length ? nowLine : ''}</tbody>
+      }).join('')}</tbody>
     </table></div>` : '<p class="muted-text pad">診療時間が登録されていません</p>'}
     ${closed ? `<p class="closed-days"><span>休診日</span>${esc(closed)}</p>` : ''}
     ${!compact && f.notes ? `<p class="notes">${esc(f.notes)}</p>` : ''}`;
@@ -426,7 +442,10 @@ function apptSection(f) {
       <button class="icon-btn sm" data-del-appt="${esc(a.at)}" aria-label="予約を削除">${icon('trash')}</button>
     </li>`).join('')}</ul>` : '<p class="muted-text">予約はありません</p>'}
     <form id="appt-form" class="appt-form">
-      <input type="datetime-local" id="appt-at" required value="" data-placeholder="${min}" aria-label="予約日時">
+      <label class="appt-at-wrap">
+        <input type="datetime-local" id="appt-at" required value="" data-placeholder="${min}" aria-label="予約日時">
+        <span class="appt-at-view" id="appt-at-view">日時を選ぶ</span>
+      </label>
       <input id="appt-memo" placeholder="メモ（任意）例: 定期検診" maxlength="40" aria-label="メモ">
       <button class="btn primary" type="submit">${icon('plus')}予約を追加</button>
     </form>
@@ -438,7 +457,15 @@ function bindDetail(id) {
   const form = document.getElementById('appt-form');
   if (form && f0) {
     const at = document.getElementById('appt-at');
-    at.onfocus = () => { if (!at.value) at.value = at.dataset.placeholder; };
+    const view = document.getElementById('appt-at-view');
+    const showAt = () => {
+      view.textContent = at.value ? apptDate(at.value) : '日時を選ぶ';
+      view.classList.toggle('empty', !at.value);
+    };
+    showAt();
+    at.onfocus = () => { if (!at.value) { at.value = at.dataset.placeholder; showAt(); } };
+    at.oninput = showAt;
+    at.onchange = showAt;
     form.onsubmit = (e) => {
       e.preventDefault();
       const memo = document.getElementById('appt-memo').value.trim();
@@ -447,6 +474,7 @@ function bindDetail(id) {
       const appointments = [...(f.appointments || []).filter((a) => new Date(a.at).getTime() > Date.now() - 30 * 86400000), { at: at.value, memo }]
         .sort((a, b) => a.at.localeCompare(b.at));
       at.value = '';
+      showAt();
       document.getElementById('appt-memo').value = '';
       at.blur();
       updateDoc(doc(facilitiesRef(), id), { appointments }).catch((err) => toast(`保存に失敗しました: ${err.message}`));
@@ -886,7 +914,7 @@ function bindSettings() {
 
 // 時刻表示（診療中など）を1分ごとに更新
 setInterval(() => {
-  const sheetOpen = document.getElementById('sheet')?.hidden === false;
+  const sheetOpen = !$sheet.hidden;
   if (state.user && !isEditing() && !sheetOpen && !isTyping() && parseRoute().parts[0] !== 'settings') render();
 }, 60000);
 

@@ -361,20 +361,9 @@ textarea { resize: vertical; }
 .stack-active { position: relative; }
 .stack-active .board { box-shadow: 0 -6px 18px rgba(20, 40, 35, .1), var(--shadow); }
 
-/* 今の時刻の位置 */
+/* 今日の列 */
 .hours td.today { background: color-mix(in srgb, var(--primary) 5%, transparent); }
 .hours thead th.today { background: var(--primary-strong); }
-.now-tag {
-  display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.6;
-  background: var(--soon); color: #fff; letter-spacing: .02em;
-}
-.now-tag.in { display: block; width: fit-content; margin-bottom: 2px; background: var(--open); }
-.hours tr.now-line td { padding: 0 !important; height: 0; border: 0 !important; position: relative; background: none !important; }
-.hours tr.now-line td::before {
-  content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: var(--soon);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--soon) 70%, transparent);
-}
-.hours tr.now-line .now-tag { position: absolute; left: 6px; top: -10px; z-index: 1; box-shadow: 0 0 10px color-mix(in srgb, var(--soon) 60%, transparent); }
 
 /* 予約 */
 .appt-banner {
@@ -392,5 +381,39 @@ textarea { resize: vertical; }
 .appt-list { list-style: none; margin: 0 0 12px; padding: 0; }
 .appt-list li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .appt-form { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.appt-form input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; min-height: 44px; }
+.appt-form input { width: 100%; min-width: 0; max-width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; min-height: 44px; }
 .appt-form .btn { min-height: 44px; }
+
+/* 予約日時: iOS の datetime-local は幅を持ちすぎるため、透明な入力の上に曜日付きの表示を重ねる */
+.appt-at-wrap { position: relative; display: block; }
+.appt-at-wrap input { -webkit-appearance: none; appearance: none; display: block; color: transparent; }
+.appt-at-wrap input::-webkit-date-and-time-value { text-align: left; }
+.appt-at-wrap input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; opacity: 0; cursor: pointer; }
+.appt-at-view {
+  position: absolute; inset: 0; display: flex; align-items: center; padding: 0 12px;
+  pointer-events: none; font-size: 16px; font-weight: 600;
+}
+.appt-at-view.empty { color: var(--sub); font-weight: 500; }
+
+/* 画面下のタブ */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 45;
+  display: flex; justify-content: space-around; align-items: stretch;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  border-top: 1px solid var(--line);
+}
+.tabbar[hidden] { display: none; }
+.tab {
+  flex: 1; max-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 4px 0; border: 0; background: none; color: var(--sub); font-size: 11px; font-weight: 600;
+}
+.tab .i { width: 24px; height: 24px; }
+.tab.on { color: var(--primary-strong); }
+.tab-plus { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: var(--primary); color: #fff; margin-bottom: -2px; }
+.tab-plus .i { width: 20px; height: 20px; stroke-width: 2.2; }
+body:has(.tabbar:not([hidden])) .page { padding-bottom: calc(110px + env(safe-area-inset-bottom)); }
+body:has(.tabbar:not([hidden])) .version { bottom: calc(66px + env(safe-area-inset-bottom)); }
+body:has(.tabbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+.appt-at-wrap input { caret-color: transparent; } .appt-at-wrap input::selection, .appt-at-wrap input::-webkit-datetime-edit-fields-wrapper { background: transparent; } .appt-at-wrap input::-webkit-datetime-edit { color: transparent; }
