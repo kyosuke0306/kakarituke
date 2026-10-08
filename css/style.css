@@ -57,12 +57,12 @@ button { cursor: pointer; }
 .bar {
   position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; gap: 8px;
-  padding: calc(16px + env(safe-area-inset-top)) 12px 8px; /* 上の余白に右上のバージョン表示が入る */
+  padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: saturate(1.4) blur(12px);
   -webkit-backdrop-filter: saturate(1.4) blur(12px);
 }
-.bar-title { flex: 1; margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-title { flex: 1; min-width: 0; margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar-actions { display: flex; gap: 4px; }
 .brand { color: var(--primary); display: grid; place-items: center; width: 40px; height: 40px; }
 .brand .i { width: 28px; height: 28px; }
@@ -258,11 +258,10 @@ textarea { resize: vertical; }
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-.version {
-  position: fixed; right: 10px; top: calc(2px + env(safe-area-inset-top)); z-index: 40;
-  font-size: 10px; line-height: 1.4; color: var(--sub); opacity: .75; pointer-events: none;
-  font-variant-numeric: tabular-nums;
-}
+.bar-titles { flex: 1; min-width: 0; display: flex; align-items: flex-end; gap: 6px; }
+.bar-titles .bar-title { flex: 0 1 auto; }
+.ver { flex: none; font-size: 10px; line-height: 1; padding-bottom: 3px; color: var(--sub); font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.login-ver { margin-top: 20px; padding: 0; }
 
 .input-wrap { position: relative; }
 .input-wrap input { padding-right: 46px; font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 15px; }
@@ -439,3 +438,29 @@ body:has(.tabbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inset
 @media (prefers-color-scheme: dark) {
   .strip, .stack-active .board { box-shadow: 0 -8px 18px rgba(0, 0, 0, .55); }
 }
+
+/* ホームを1画面に収める */
+body.home-fit { overflow: hidden; }
+body.home-fit #app { height: 100dvh; display: flex; flex-direction: column; }
+body.home-fit #app > .bar { flex: none; }
+body.home-fit .page.home {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+.page.home .filters { flex: none; }
+.page.home .stack { flex: 1; min-height: 0; overflow: hidden; padding-top: 4px; }
+.page.home .stack.scroll { overflow-y: auto; }
+.stack > * { flex-shrink: 0; }
+.strip { align-items: flex-start; }
+.strip .pill { margin-top: 4px; }
+
+/* 高さが足りない時の詰めたカード */
+.board.dense .board-head { padding: 10px 14px 8px; }
+.board.dense .board-cat { display: none; }
+.board.dense .board-name { font-size: 18px; margin: 0 0 6px; }
+.board.dense .appt-banner { margin-bottom: 8px; padding: 6px 10px; }
+.board.dense .appt-banner .appt-memo, .board.dense .appt-banner .appt-label { display: none; }
+.board.dense .hours tbody th, .board.dense .hours tbody td { padding-top: 7px; padding-bottom: 7px; }
+.board.dense .closed-days { margin-top: 6px; font-size: 13px; }
+.board.dense .board-foot { margin-top: 8px; padding: 8px 14px; }
+.board.dense .board-tel { font-size: 17px; }

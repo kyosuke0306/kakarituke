@@ -22,8 +22,7 @@ const ALL_DEPTS = ['内科', '外科', '整形外科', '皮膚科', '眼科', '�
 const DEFAULT_SETTINGS = { departments: ['内科'], geminiApiKey: '', geminiModel: 'gemini-flash-latest' };
 
 const $app = document.getElementById('app');
-document.getElementById('version').textContent =
-  `ver${VERSION} ${DEPLOYED_AT.startsWith('__') ? 'local' : DEPLOYED_AT}`;
+const VERSION_TEXT = `ver${VERSION} ${DEPLOYED_AT.startsWith('__') ? 'local' : DEPLOYED_AT}`;
 
 const state = { user: null, authReady: false, facilities: [], loaded: false, settings: { ...DEFAULT_SETTINGS }, activeId: loadActiveId() };
 let unsubs = [];
@@ -163,7 +162,7 @@ window.addEventListener('hashchange', () => { draft = null; render(); window.scr
 function header({ title, back, actions = '' }) {
   return `<header class="bar">
     ${back ? `<a class="icon-btn" href="${back}" aria-label="戻る">${icon('back')}</a>` : `<span class="brand">${icon('logo')}</span>`}
-    <h1 class="bar-title">${esc(title)}</h1>
+    <div class="bar-titles"><h1 class="bar-title">${esc(title)}</h1><span class="ver">${VERSION_TEXT}</span></div>
     <div class="bar-actions">${actions}</div>
   </header>`;
 }
@@ -176,6 +175,7 @@ function render() {
   const { parts } = parseRoute();
   const [p0, p1, p2] = parts;
   renderNav(p0 === 'settings' ? 'settings' : !p0 ? 'home' : '');
+  document.body.classList.toggle('home-fit', !p0);
   if (p0 === 'c' && p1) { state.homeFilter = p1; go('#/'); return; } // 旧URLの互換
   if (p0 === 'f' && p1) { $app.innerHTML = viewDetail(p1); fitBoardName(); bindDetail(p1); return; }
   if (p0 === 'new') { openEditor(null, p1 || 'hospital', p2 || ''); return; }
@@ -199,6 +199,7 @@ function viewLogin() {
     <div class="login-logo">${icon('logo')}</div>
     <h1 class="login-title">KAKARITUKE</h1>
     <p class="login-sub">いざという時に、すぐ見られる<br>かかりつけ施設の診療時間</p>
+    <p class="ver login-ver">${VERSION_TEXT}</p>
     <button class="btn google" id="login">${googleLogo}<span>Google でログイン</span></button>
   </main>`;
 }
@@ -245,14 +246,13 @@ function viewHome() {
   const filter = cats.some((c) => c.id === state.homeFilter) ? state.homeFilter : '';
   const items = state.facilities.filter((f) => !filter || f.category === filter);
   return `${header({ title: 'KAKARITUKE' })}
-  <main class="page">
+  <main class="page home">
     ${cats.length > 1 ? `<div class="filters">
       <button class="chip ${!filter ? 'on' : ''}" data-filter="">すべて</button>
       ${cats.map((c) => `<button class="chip ${filter === c.id ? 'on' : ''}" data-filter="${c.id}">${icon(c.icon)}${c.label}</button>`).join('')}
     </div>` : ''}
     ${!state.loaded ? '<div class="center"><div class="spinner"></div></div>'
-      : items.length ? `${stackedCards(items)}
-        <button class="add-more" data-open-sheet>${icon('plus')}施設を登録</button>`
+      : items.length ? stackedCards(items)
       : `<div class="empty">
           <div class="empty-icon">${icon('logo')}</div>
           <p>かかりつけの施設を登録すると<br>ここに診療時間が表示されます</p>
@@ -332,7 +332,32 @@ function bindHome() {
     b.onclick = () => { state.homeFilter = b.dataset.filter; render(); };
   });
   fitBoardName();
+  fitHome();
 }
+
+// ホームをスクロールなしの1画面に収める: 重ねたカードの見える幅を詰め、足りなければカードを小さくする
+function fitHome() {
+  const stack = document.querySelector('.stack');
+  if (!stack) return;
+  const strips = [...stack.querySelectorAll('.strip')];
+  const board = stack.querySelector('.stack-active .board');
+  board.classList.remove('dense');
+  stack.classList.remove('scroll');
+  strips.forEach((el) => { el.style.marginBottom = ''; });
+  const avail = stack.clientHeight;
+  const perStrip = () => (strips.length ? Math.floor((avail - board.offsetHeight) / strips.length) : 0);
+  let per = Math.min(62, perStrip());
+  if (strips.length ? per < 48 : board.offsetHeight > avail) {
+    board.classList.add('dense');
+    fitBoardName();
+    per = Math.min(62, perStrip());
+  }
+  per = Math.max(per, 40); // カード名が読める最小の見え幅
+  strips.forEach((el) => { el.style.marginBottom = `${per - el.offsetHeight}px`; });
+  // それでも入らない場合だけスクロールさせる
+  if (strips.length * per + board.offsetHeight > avail + 1) stack.classList.add('scroll');
+}
+window.addEventListener('resize', () => { if (document.body.classList.contains('home-fit')) fitHome(); });
 
 // 今の時刻に当たる時間帯（診療中）と、本日この後の時間帯を求める（終了後はどちらも無し）
 function nowMarks(sessions) {
