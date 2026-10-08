@@ -54,9 +54,12 @@ if (configured) {
         state.loaded = true;
         if (!isEditing() || !draft) render();
       }, (err) => toast(`読み込みに失敗しました: ${err.message}`)));
+      let firstSettings = true;
       unsubs.push(onSnapshot(doc(db, 'users', user.uid), (snap) => {
         state.settings = { ...DEFAULT_SETTINGS, ...(snap.data() || {}) };
-        if (!isEditing()) render();
+        const onSettings = parseRoute().parts[0] === 'settings';
+        if (!isEditing() && (!onSettings || firstSettings)) render();
+        firstSettings = false;
       }));
     }
     render();
@@ -595,8 +598,15 @@ function viewSettings() {
     <section class="card">
       <div class="card-title">${icon('key')}Gemini API</div>
       <p class="muted-text">URLや画像からの自動読み取りに使います。キーは Google AI Studio で無料で発行できます。</p>
-      <label class="field"><span>API キー</span><input id="s-key" type="password" autocomplete="off" value="${esc(s.geminiApiKey)}" placeholder="AIza..."></label>
+      <div class="field">
+        <label for="s-key">API キー</label>
+        <div class="input-wrap">
+          <input id="s-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(s.geminiApiKey)}" placeholder="AIza...">
+          <button type="button" class="icon-btn sm reveal" id="s-reveal" aria-label="キーを表示" aria-pressed="false">${icon('eye')}</button>
+        </div>
+      </div>
       <label class="field"><span>モデル</span><input id="s-model" value="${esc(s.geminiModel)}" placeholder="gemini-flash-latest"></label>
+      <p class="saved-state" id="s-state">${savedKeyText(s)}</p>
       <button class="btn primary block" id="s-save">${icon('check')}保存</button>
     </section>
 
@@ -608,6 +618,12 @@ function viewSettings() {
       <button class="btn ghost block" id="logout">${icon('logout')}ログアウト</button>
     </section>
   </main>`;
+}
+
+function savedKeyText(s) {
+  return s.geminiApiKey
+    ? `${icon('check')}保存済みのキー: 末尾「${esc(s.geminiApiKey.slice(-4))}」・モデル: ${esc(s.geminiModel)}`
+    : 'キーはまだ保存されていません';
 }
 
 function bindSettings() {
@@ -622,11 +638,40 @@ function bindSettings() {
       setDoc(userRef(), { departments }, { merge: true }).catch((err) => toast(err.message));
     };
   });
-  document.getElementById('s-save').onclick = () => {
-    const geminiApiKey = document.getElementById('s-key').value.trim();
+  const keyInput = document.getElementById('s-key');
+  const reveal = document.getElementById('s-reveal');
+  reveal.onclick = () => {
+    const show = keyInput.type === 'password';
+    keyInput.type = show ? 'text' : 'password';
+    reveal.innerHTML = icon(show ? 'eyeOff' : 'eye');
+    reveal.setAttribute('aria-label', show ? 'キーを隠す' : 'キーを表示');
+    reveal.setAttribute('aria-pressed', String(show));
+  };
+
+  const saveBtn = document.getElementById('s-save');
+  const idleLabel = saveBtn.innerHTML;
+  saveBtn.onclick = async () => {
+    const geminiApiKey = keyInput.value.trim();
     const geminiModel = document.getElementById('s-model').value.trim() || DEFAULT_SETTINGS.geminiModel;
-    setDoc(userRef(), { geminiApiKey, geminiModel }, { merge: true })
-      .then(() => toast('保存しました')).catch((err) => toast(err.message));
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner sm"></span>保存中…';
+    try {
+      await setDoc(userRef(), { geminiApiKey, geminiModel }, { merge: true });
+      Object.assign(state.settings, { geminiApiKey, geminiModel });
+      document.getElementById('s-state').innerHTML = savedKeyText(state.settings);
+      saveBtn.classList.add('done');
+      saveBtn.innerHTML = `${icon('check')}保存しました`;
+      toast('保存しました');
+      setTimeout(() => {
+        saveBtn.classList.remove('done');
+        saveBtn.innerHTML = idleLabel;
+        saveBtn.disabled = false;
+      }, 2000);
+    } catch (err) {
+      toast(`保存に失敗しました: ${err.message}`);
+      saveBtn.innerHTML = idleLabel;
+      saveBtn.disabled = false;
+    }
   };
   document.getElementById('logout').onclick = () => signOut(auth);
 }
