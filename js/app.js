@@ -140,7 +140,7 @@ function toast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+  toastTimer = setTimeout(() => el.classList.remove('show'), Math.max(3500, msg.length * 90)); // 長い文は長めに表示
 }
 
 // ---------- ルーティング ----------

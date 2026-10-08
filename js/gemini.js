@@ -51,7 +51,7 @@ export async function extractSchedule({ apiKey, model, url, text, image, departm
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = json?.error?.message || res.statusText;
-    if (res.status === 429) throw new Error('Gemini の無料枠の上限に達しました。しばらく待ってから再度お試しください。');
+    if (res.status === 429) throw new Error(quotaMessage(json.error));
     if (res.status === 400 && /API key/i.test(msg)) throw new Error('Gemini API キーが正しくありません。設定画面を確認してください。');
     if (res.status === 404 || /no longer available|not found/i.test(msg)) {
       const err = new Error(`モデル「${model}」は使えません。設定画面でモデル名を確認してください。`);
@@ -80,6 +80,24 @@ export async function extractSchedule({ apiKey, model, url, text, image, departm
     throw new Error('診療時間が見つかりませんでした。診療案内のページのURLや画像でお試しください。');
   }
   return data;
+}
+
+// 429 の詳細から、どの上限に当たったかを分かる言葉にする
+function quotaMessage(err) {
+  const details = err?.details || [];
+  const ids = details.flatMap((d) => d.violations || []).map((v) => v.quotaId || '').filter(Boolean);
+  const retry = details.find((d) => d.retryDelay)?.retryDelay;
+  const raw = err?.message || '';
+  const model = raw.match(/model:\s*([\w.-]+)/)?.[1];
+  const info = ids.length ? `（詳細: ${[...new Set(ids)].join(', ')}${model ? ` / ${model}` : ''}）` : '';
+  if (/limit:\s*0\b/.test(raw)) {
+    return `このキーの無料枠では、このモデル${model ? `「${model}」` : ''}や検索機能が使えません。設定画面でモデルを変えるか、別のキーをお試しください${info}`;
+  }
+  if (ids.some((id) => /PerDay/i.test(id))) return `本日の無料枠の上限に達しました。明日以降に再度お試しください${info}`;
+  if (ids.some((id) => /PerMinute/i.test(id))) {
+    return `1分あたりの上限に達しました。${retry ? `${Math.ceil(parseFloat(retry))}秒` : '1分'}ほど待ってから再度お試しください${info}`;
+  }
+  return `Gemini の利用上限に達しました。しばらく待ってから再度お試しください${info || `（${raw.slice(0, 120)}）`}`;
 }
 
 function str(v) {
