@@ -1,0 +1,9 @@
+{
+  "name": "かかりつけ",
+  "short_name": "かかりつけ",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f6f5",
+  "theme_color": "#2a9d84",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

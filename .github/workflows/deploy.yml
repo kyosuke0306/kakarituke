@@ -1,0 +1,41 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - claude/medical-facility-hours-app-ecvs8i
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          mkdir -p dist
+          cp -r index.html icon.svg manifest.webmanifest css js dist/
+          DEPLOYED_AT=$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M')
+          sed -i "s|__DEPLOYED_AT__|${DEPLOYED_AT}|" dist/js/version.js
+          # キャッシュ対策: 読み込むファイルにコミットIDを付ける
+          REV=${GITHUB_SHA::7}
+          sed -i "s|css/style.css|css/style.css?v=${REV}|; s|js/app.js|js/app.js?v=${REV}|" dist/index.html
+          sed -i -E "s#(from '\./[a-z-]+\.js)'#\1?v=${REV}'#g" dist/js/*.js
+          touch dist/.nojekyll
+
+      - name: Publish to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
