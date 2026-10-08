@@ -5,7 +5,7 @@ const PROMPT = `あなたは日本の医療機関の情報を整理するアシ�
 与えられた情報源から、施設の診療時間などを読み取り、次の形式のJSONのみを出力してください（説明文は不要）。
 
 {
-  "name": "施設名 または null",
+  "name": "施設名（「医療法人○○会」などの法人名は除いた通称。例: 大正病院）または null",
   "phone": "電話番号 または null",
   "address": "住所 または null",
   "department": "主な診療科（例: 内科）または null",
@@ -43,26 +43,10 @@ export async function extractSchedule({ apiKey, model, url, text, image, departm
   if (text) parts.push({ text: `情報源のテキスト:\n${text}` });
   if (image) parts.push({ inline_data: { mime_type: image.mimeType, data: image.base64 } });
 
-  const res = await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = json?.error?.message || res.statusText;
-    if (res.status === 429) throw new Error(quotaMessage(json.error));
-    if (res.status === 400 && /API key/i.test(msg)) throw new Error('Gemini API キーが正しくありません。設定画面を確認してください。');
-    if (res.status === 404 || /no longer available|not found/i.test(msg)) {
-      const err = new Error(`モデル「${model}」は使えません。設定画面でモデル名を確認してください。`);
-      err.code = 'model_unavailable';
-      throw err;
-    }
-    throw new Error(`Gemini API エラー: ${msg}`);
-  }
+  const json = await callGemini(apiKey, model, body);
 
   const cand = json.candidates?.[0];
-  const out = (cand?.content?.parts || []).map((p) => p.text || '').join('');
+  const out = textOf(json);
   const meta = cand?.urlContextMetadata?.urlMetadata || cand?.url_context_metadata?.url_metadata || [];
   const urlFailed = url && meta.length > 0 && meta.every((m) => !/SUCCESS/.test(m.urlRetrievalStatus || m.url_retrieval_status || ''));
 
@@ -80,6 +64,58 @@ export async function extractSchedule({ apiKey, model, url, text, image, departm
     throw new Error('診療時間が見つかりませんでした。診療案内のページのURLや画像でお試しください。');
   }
   return data;
+}
+
+async function callGemini(apiKey, model, body) {
+  const res = await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = json?.error?.message || res.statusText;
+    if (res.status === 429) throw new Error(quotaMessage(json.error));
+    if (res.status === 400 && /API key/i.test(msg)) throw new Error('Gemini API キーが正しくありません。設定画面を確認してください。');
+    if (res.status === 404 || /no longer available|not found/i.test(msg)) {
+      const err = new Error(`モデル「${model}」は使えません。設定画面でモデル名を確認してください。`);
+      err.code = 'model_unavailable';
+      throw err;
+    }
+    throw new Error(`Gemini API エラー: ${msg}`);
+  }
+  return json;
+}
+
+const textOf = (json) => (json.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
+
+// 施設名などから候補を検索する（Google 検索を使う）
+export async function searchFacilities({ apiKey, model, query, category }) {
+  if (!apiKey) throw new Error('設定画面で Gemini API キーを登録してください。');
+  const prompt = `日本の医療機関を必ず Google 検索ツールで検索してから答えてください（記憶だけで答えないこと）。
+検索語: 「${query}」${category ? `（種類: ${category}）` : ''}
+
+名前が完全に一致する施設を優先し、足りなければ似た名前の施設も含めて最大5件、次の形式のJSON配列のみで出力してください（説明文は不要）。
+[{ "name": "施設名（法人名は除いた通称）", "address": "住所（都道府県から）", "url": "公式サイトのURL" }]
+
+ルール:
+- url は検索結果で確認できた公式サイトのURLのみ。病院検索サイト・口コミサイト・地図サイトのURLは不可。分からなければ null。
+- 同名の施設が複数の地域にある場合はそれぞれ別の候補にする。
+- 見つからなければ [] を出力。`;
+  const json = await callGemini(apiKey, model, {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+  });
+  const out = textOf(json);
+  const start = out.indexOf('[');
+  const end = out.lastIndexOf(']');
+  if (start < 0 || end < 0) return [];
+  let list;
+  try { list = JSON.parse(out.slice(start, end + 1)); } catch { return []; }
+  return (Array.isArray(list) ? list : [])
+    .map((c) => ({ name: str(c.name), address: str(c.address), url: /^https?:\/\//.test(str(c.url)) ? str(c.url) : '' }))
+    .filter((c) => c.name)
+    .slice(0, 5);
 }
 
 // 429 の詳細から、どの上限に当たったかを分かる言葉にする

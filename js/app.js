@@ -9,7 +9,7 @@ import {
 import { firebaseConfig } from './firebase-config.js';
 import { VERSION, DEPLOYED_AT } from './version.js';
 import { icon, googleLogo } from './icons.js';
-import { extractSchedule, fileToInlineImage } from './gemini.js';
+import { extractSchedule, searchFacilities, fileToInlineImage } from './gemini.js';
 
 const DAYS = ['月', '火', '水', '木', '金', '土', '日'];
 const CATEGORIES = [
@@ -155,7 +155,7 @@ function header({ title, back, actions = '' }) {
   return `<header class="bar">
     ${back ? `<a class="icon-btn" href="${back}" aria-label="戻る">${icon('back')}</a>` : `<span class="brand">${icon('logo')}</span>`}
     <h1 class="bar-title">${esc(title)}</h1>
-    <div class="bar-actions">${actions}</div>
+    <div class="bar-actions">${actions}${back ? `<a class="icon-btn" href="#/" aria-label="ホーム">${icon('home')}</a>` : ''}</div>
   </header>`;
 }
 
@@ -172,7 +172,7 @@ function render() {
     $app.innerHTML = viewList(cat, p2 || '');
     return;
   }
-  if (p0 === 'f' && p1) { $app.innerHTML = viewDetail(p1); bindDetail(p1); return; }
+  if (p0 === 'f' && p1) { $app.innerHTML = viewDetail(p1); fitBoardName(); bindDetail(p1); return; }
   if (p0 === 'new') { openEditor(null, p1 || 'hospital', p2 || ''); return; }
   if (p0 === 'edit' && p1) { openEditor(p1); return; }
   if (p0 === 'settings') { $app.innerHTML = viewSettings(); bindSettings(); return; }
@@ -271,7 +271,7 @@ function scheduleBoard(f) {
   const closed = closedDaysText(f);
   return `<section class="board">
     <div class="board-head">
-      <h2 class="board-name">${esc(f.name || '名称未設定')}</h2>
+      <h2 class="board-name">${nameSegments(f.name || '名称未設定')}</h2>
       <span class="pill ${st.cls}">${icon('clock')}${esc(st.label)}</span>
     </div>
     ${sessions.length ? `<div class="table-wrap"><table class="hours">
@@ -288,6 +288,24 @@ function scheduleBoard(f) {
       ${f.phone ? `<a class="board-tel" href="tel:${esc(f.phone.replace(/[^\d+]/g, ''))}">${icon('phone')}${esc(f.phone)}</a>` : ''}
     </div>
   </section>`;
+}
+
+// 施設名を空白で区切り、区切りの途中では改行しない
+function nameSegments(name) {
+  return name.trim().split(/[\s\u3000]+/).map((w) => `<span class="nw">${esc(w)}</span>`).join(' ');
+}
+
+// 1語が画面幅に収まらない場合は文字を小さくする
+function fitBoardName() {
+  const el = document.querySelector('.board-name');
+  if (!el) return;
+  el.style.fontSize = '';
+  let size = parseFloat(getComputedStyle(el).fontSize);
+  const tooWide = () => [...el.children].some((c) => c.scrollWidth > el.clientWidth + 1);
+  while (tooWide() && size > 15) {
+    size -= 1;
+    el.style.fontSize = `${size}px`;
+  }
 }
 
 function viewDetail(id) {
@@ -309,7 +327,7 @@ function viewDetail(id) {
     </div>
     ${f.address ? `<div class="info-row">${icon('mapPin')}<span>${esc(f.address)}</span></div>` : ''}
     ${site ? `<a class="notice" href="${esc(site)}" target="_blank" rel="noopener">
-      ${icon('calendarOff')}<span>臨時休診や年末年始の予定は公式サイトでご確認ください</span>${icon('external', 'chev')}
+      ${icon('calendarOff')}<span>臨時休診・年末年始は公式サイトで確認</span>${icon('external', 'chev')}
     </a>` : ''}
     ${site ? `<button class="link-btn" id="refresh-ai">${icon('sparkle')}サイトから診療時間を再読み取り</button>` : ''}
   </main>`;
@@ -368,6 +386,15 @@ function viewEditor(id) {
   <main class="page form">
     <section class="card ai">
       <div class="ai-head">${icon('sparkle')}<span>AI で自動入力</span></div>
+      <form class="field" id="search-form">
+        <label for="f-search">施設名で検索</label>
+        <div class="search-row">
+          <input type="search" id="f-search" enterkeyhint="search" placeholder="例: 大正病院 大阪" value="${esc(d.name)}">
+          <button class="btn primary" id="ai-search" type="submit">${icon('search')}検索</button>
+        </div>
+      </form>
+      <div id="search-results"></div>
+      <div class="divider"><span>または URL を直接入力</span></div>
       <label class="field">
         <span>公式サイトのURL</span>
         <input type="url" id="f-url" inputmode="url" placeholder="https://..." value="${esc(d.url)}">
@@ -485,7 +512,9 @@ function bindEditor(id) {
   const aiRun = async (btn, input) => {
     const label = btn.innerHTML;
     document.querySelectorAll('.ai button, .ai label.btn').forEach((b) => b.classList.add('busy'));
-    btn.innerHTML = '<span class="spinner sm"></span>読み取り中…（最大1分ほど）';
+    btn.innerHTML = btn.classList.contains('result')
+      ? `<span class="result-body"><span class="row-title">${btn.querySelector('.row-title').innerHTML}</span><span class="row-sub"><span class="spinner sm dark"></span>診療時間を読み取り中…（最大1分ほど）</span></span>`
+      : '<span class="spinner sm"></span>読み取り中…（最大1分ほど）';
     try {
       const data = await runExtract({ ...input, department: draft.department });
       if (data.sessions.length) draft.sessions = data.sessions;
@@ -500,6 +529,56 @@ function bindEditor(id) {
       toast(e.message);
       btn.innerHTML = label;
       document.querySelectorAll('.busy').forEach((b) => b.classList.remove('busy'));
+    }
+  };
+  $('search-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const query = $('f-search').value.trim();
+    if (!query) { toast('施設名を入力してください'); return; }
+    $('f-search').blur();
+    const btn = $('ai-search');
+    const box = $('search-results');
+    btn.classList.add('busy');
+    box.innerHTML = '<p class="search-msg"><span class="spinner sm dark"></span>検索中…（20秒ほど）</p>';
+    try {
+      const cat = catOf(draft.category);
+      const list = await withModelFallback((model) => searchFacilities({
+        apiKey: state.settings.geminiApiKey, model, query,
+        category: [cat.label, cat.hasDept ? draft.department : ''].filter(Boolean).join(' '),
+      }));
+      box.innerHTML = list.length
+        ? `<p class="search-msg">候補をタップすると診療時間を読み取ります</p><div class="results">${list.map((c, i) => `
+          <button type="button" class="result" data-i="${i}">
+            <span class="result-body">
+              <span class="row-title">${esc(c.name)}</span>
+              <span class="row-sub">${esc(c.address || '住所不明')}</span>
+              <span class="row-sub url">${c.url ? esc(c.url.replace(/^https?:\/\//, '').replace(/\/$/, '')) : '公式サイトなし'}</span>
+            </span>
+            ${icon('chevronRight', 'chev')}
+          </button>`).join('')}</div>`
+        : '<p class="search-msg">見つかりませんでした。地名を加えるなどして再検索してください</p>';
+      box.querySelectorAll('.result').forEach((el) => {
+        el.onclick = () => {
+          const c = list[el.dataset.i];
+          draft.name = c.name;
+          if (c.address) draft.address = c.address;
+          $('f-name').value = draft.name;
+          $('f-address').value = draft.address;
+          if (!c.url) {
+            toast('公式サイトが見つからないため、画像か文章から読み取ってください');
+            return;
+          }
+          draft.url = c.url;
+          $('f-url').value = c.url;
+          box.querySelectorAll('.result').forEach((r) => r.classList.toggle('picked', r === el));
+          aiRun(el, { url: c.url });
+        };
+      });
+    } catch (err) {
+      box.innerHTML = '';
+      toast(err.message);
+    } finally {
+      btn.classList.remove('busy');
     }
   };
   $('ai-url').onclick = (e) => {
@@ -571,18 +650,21 @@ function bindEditor(id) {
 
 const NO_SESSIONS_MSG = 'このページに診療時間が見つかりませんでした。診療案内のページのURLや画像でお試しください';
 
-async function runExtract(input) {
-  const apiKey = state.settings.geminiApiKey;
+async function withModelFallback(fn) {
   const model = state.settings.geminiModel || DEFAULT_SETTINGS.geminiModel;
   try {
-    return await extractSchedule({ apiKey, model, ...input });
+    return await fn(model);
   } catch (e) {
     // 保存済みのモデルが提供終了した場合は既定のモデルで再試行
     if (e.code !== 'model_unavailable' || model === DEFAULT_SETTINGS.geminiModel) throw e;
-    const data = await extractSchedule({ apiKey, model: DEFAULT_SETTINGS.geminiModel, ...input });
+    const result = await fn(DEFAULT_SETTINGS.geminiModel);
     setDoc(userRef(), { geminiModel: DEFAULT_SETTINGS.geminiModel }, { merge: true }).catch(() => {});
-    return data;
+    return result;
   }
+}
+
+function runExtract(input) {
+  return withModelFallback((model) => extractSchedule({ apiKey: state.settings.geminiApiKey, model, ...input }));
 }
 
 // ---------- 設定 ----------
