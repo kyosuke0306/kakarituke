@@ -197,7 +197,7 @@ function viewSetup() {
 function viewLogin() {
   return `<main class="login">
     <div class="login-logo">${icon('logo')}</div>
-    <h1 class="login-title">かかりつけ</h1>
+    <h1 class="login-title">KAKARITUKE</h1>
     <p class="login-sub">いざという時に、すぐ見られる<br>かかりつけ施設の診療時間</p>
     <button class="btn google" id="login">${googleLogo}<span>Google でログイン</span></button>
   </main>`;
@@ -244,7 +244,7 @@ function viewHome() {
   const cats = CATEGORIES.filter((c) => state.facilities.some((f) => f.category === c.id));
   const filter = cats.some((c) => c.id === state.homeFilter) ? state.homeFilter : '';
   const items = state.facilities.filter((f) => !filter || f.category === filter);
-  return `${header({ title: 'かかりつけ' })}
+  return `${header({ title: 'KAKARITUKE' })}
   <main class="page">
     ${cats.length > 1 ? `<div class="filters">
       <button class="chip ${!filter ? 'on' : ''}" data-filter="">すべて</button>
