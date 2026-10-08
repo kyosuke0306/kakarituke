@@ -299,7 +299,7 @@ function stackedCards(items) {
       const st = statusOf(f);
       const cat = catOf(f.category);
       const a = upcomingAppts(f)[0];
-      return `<button class="strip" data-activate="${f.id}">
+      return `<button class="strip cat-${esc(cat.id)}" data-activate="${f.id}">
         <span class="strip-icon">${icon(cat.icon)}</span>
         <span class="strip-body">
           <span class="strip-name">${esc(f.name || '名称未設定')}</span>
@@ -376,7 +376,7 @@ function scheduleBoard(f, { compact = false } = {}) {
     </table></div>` : '<p class="muted-text pad">診療時間が登録されていません</p>'}
     ${closed ? `<p class="closed-days"><span>休診日</span>${esc(closed)}</p>` : ''}
     ${!compact && f.notes ? `<p class="notes">${esc(f.notes)}</p>` : ''}`;
-  return `<section class="board${compact ? ' compact' : ''}">
+  return `<section class="board cat-${esc(cat.id)}${compact ? ' compact' : ''}">
     ${compact ? `<a class="board-link" href="#/f/${f.id}" aria-label="${esc(f.name)}の詳細">${inner}</a>` : inner}
     <div class="board-foot">
       ${f.reservation ? '<span class="badge">予約優先</span>' : '<span></span>'}

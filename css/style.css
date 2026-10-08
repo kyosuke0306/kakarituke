@@ -417,3 +417,26 @@ body:has(.tabbar:not([hidden])) .page { padding-bottom: calc(110px + env(safe-ar
 body:has(.tabbar:not([hidden])) .version { bottom: calc(66px + env(safe-area-inset-bottom)); }
 body:has(.tabbar:not([hidden])) .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .appt-at-wrap input { caret-color: transparent; } .appt-at-wrap input::selection, .appt-at-wrap input::-webkit-datetime-edit-fields-wrapper { background: transparent; } .appt-at-wrap input::-webkit-datetime-edit { color: transparent; }
+
+/* 重ねたカードの境目: 種類ごとの色の縁と上向きの影 */
+.cat-hospital { --accent: #2a9d84; }
+.cat-dental { --accent: #3b82c4; }
+.cat-pharmacy { --accent: #d4892a; }
+.cat-other { --accent: #8a6fc0; }
+.strip {
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-top: 4px solid var(--accent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--surface)), var(--surface) 70%);
+  box-shadow: 0 -6px 16px rgba(10, 30, 25, .14);
+}
+.strip + .strip { margin-top: 0; }
+.strip-icon { background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--accent); }
+.stack-active .board {
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-top: 4px solid var(--accent);
+  box-shadow: 0 -8px 20px rgba(10, 30, 25, .16), var(--shadow);
+}
+.board.compact .board-cat { color: var(--accent); }
+@media (prefers-color-scheme: dark) {
+  .strip, .stack-active .board { box-shadow: 0 -8px 18px rgba(0, 0, 0, .55); }
+}
