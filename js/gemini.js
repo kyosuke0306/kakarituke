@@ -45,7 +45,11 @@ export async function extractSchedule({ apiKey, model, url, text, image }) {
     const msg = json?.error?.message || res.statusText;
     if (res.status === 429) throw new Error('Gemini の無料枠の上限に達しました。しばらく待ってから再度お試しください。');
     if (res.status === 400 && /API key/i.test(msg)) throw new Error('Gemini API キーが正しくありません。設定画面を確認してください。');
-    if (res.status === 404) throw new Error(`モデル「${model}」が見つかりません。設定画面でモデル名を確認してください。`);
+    if (res.status === 404 || /no longer available|not found/i.test(msg)) {
+      const err = new Error(`モデル「${model}」は使えません。設定画面でモデル名を確認してください。`);
+      err.code = 'model_unavailable';
+      throw err;
+    }
     throw new Error(`Gemini API エラー: ${msg}`);
   }
 
@@ -54,18 +58,18 @@ export async function extractSchedule({ apiKey, model, url, text, image }) {
   const meta = cand?.urlContextMetadata?.urlMetadata || cand?.url_context_metadata?.url_metadata || [];
   const urlFailed = url && meta.length > 0 && meta.every((m) => !/SUCCESS/.test(m.urlRetrievalStatus || m.url_retrieval_status || ''));
 
+  // 読み込みに失敗したのに記憶から答えることがあるため、推測の値は使わない
+  if (urlFailed) throw new Error('サイトを読み込めませんでした。ページの文章を貼り付けるか、診療時間の画像から読み取ってください。');
+
   const start = out.indexOf('{');
   const end = out.lastIndexOf('}');
   if (start < 0 || end < 0) {
-    throw new Error(urlFailed
-      ? 'サイトを読み込めませんでした。ページの文章を貼り付けるか、診療時間の画像から読み取ってください。'
-      : '診療時間を読み取れませんでした。別の方法をお試しください。');
+    throw new Error('診療時間を読み取れませんでした。別の方法をお試しください。');
   }
   const data = normalize(JSON.parse(out.slice(start, end + 1)));
-  if (!data.sessions.length) {
-    throw new Error(urlFailed
-      ? 'サイトを読み込めませんでした。ページの文章を貼り付けるか、診療時間の画像から読み取ってください。'
-      : '診療時間が見つかりませんでした。診療案内のページのURLや画像でお試しください。');
+  // 診療時間が無くても施設名・電話・住所が取れていれば返す（呼び出し側で案内する）
+  if (!data.sessions.length && !data.name && !data.phone && !data.address) {
+    throw new Error('診療時間が見つかりませんでした。診療案内のページのURLや画像でお試しください。');
   }
   return data;
 }

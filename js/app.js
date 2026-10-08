@@ -19,7 +19,7 @@ const CATEGORIES = [
   { id: 'other', label: 'その他', icon: 'building' },
 ];
 const ALL_DEPTS = ['内科', '外科', '整形外科', '皮膚科', '眼科', '耳鼻咽喉科', '小児科', '婦人科', '泌尿器科', '心療内科'];
-const DEFAULT_SETTINGS = { departments: ['内科'], geminiApiKey: '', geminiModel: 'gemini-2.5-flash' };
+const DEFAULT_SETTINGS = { departments: ['内科'], geminiApiKey: '', geminiModel: 'gemini-flash-latest' };
 
 const $app = document.getElementById('app');
 document.getElementById('version').textContent =
@@ -321,6 +321,7 @@ function bindDetail(id) {
     btn.innerHTML = `<span class="spinner sm"></span>読み取り中…`;
     try {
       const data = await runExtract({ url: f.url });
+      if (!data.sessions.length) throw new Error(NO_SESSIONS_MSG);
       pendingDraft = structuredClone({ ...f, sessions: data.sessions, reservation: data.reservation || f.reservation, closedOnHolidays: data.closedOnHolidays, notes: data.notes || f.notes });
       go(`#/edit/${id}`);
       toast('読み取りました。内容を確認して保存してください');
@@ -484,13 +485,13 @@ function bindEditor(id) {
     btn.innerHTML = '<span class="spinner sm"></span>読み取り中…';
     try {
       const data = await runExtract(input);
-      draft.sessions = data.sessions;
+      if (data.sessions.length) draft.sessions = data.sessions;
       draft.reservation = data.reservation || draft.reservation;
       draft.closedOnHolidays = data.closedOnHolidays;
       for (const k of ['name', 'phone', 'address', 'notes']) if (!draft[k] && data[k]) draft[k] = data[k];
       if (catOf(draft.category).hasDept && data.department && !draft.department) draft.department = data.department;
       rerender();
-      toast('読み取りました。内容を確認して保存してください');
+      toast(data.sessions.length ? '読み取りました。内容を確認して保存してください' : NO_SESSIONS_MSG);
       document.getElementById('sessions')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } catch (e) {
       toast(e.message);
@@ -565,12 +566,20 @@ function bindEditor(id) {
   }
 }
 
+const NO_SESSIONS_MSG = 'このページに診療時間が見つかりませんでした。診療案内のページのURLや画像でお試しください';
+
 async function runExtract(input) {
-  return extractSchedule({
-    apiKey: state.settings.geminiApiKey,
-    model: state.settings.geminiModel || DEFAULT_SETTINGS.geminiModel,
-    ...input,
-  });
+  const apiKey = state.settings.geminiApiKey;
+  const model = state.settings.geminiModel || DEFAULT_SETTINGS.geminiModel;
+  try {
+    return await extractSchedule({ apiKey, model, ...input });
+  } catch (e) {
+    // 保存済みのモデルが提供終了した場合は既定のモデルで再試行
+    if (e.code !== 'model_unavailable' || model === DEFAULT_SETTINGS.geminiModel) throw e;
+    const data = await extractSchedule({ apiKey, model: DEFAULT_SETTINGS.geminiModel, ...input });
+    setDoc(userRef(), { geminiModel: DEFAULT_SETTINGS.geminiModel }, { merge: true }).catch(() => {});
+    return data;
+  }
 }
 
 // ---------- 設定 ----------
@@ -587,7 +596,7 @@ function viewSettings() {
       <div class="card-title">${icon('key')}Gemini API</div>
       <p class="muted-text">URLや画像からの自動読み取りに使います。キーは Google AI Studio で無料で発行できます。</p>
       <label class="field"><span>API キー</span><input id="s-key" type="password" autocomplete="off" value="${esc(s.geminiApiKey)}" placeholder="AIza..."></label>
-      <label class="field"><span>モデル</span><input id="s-model" value="${esc(s.geminiModel)}" placeholder="gemini-2.5-flash"></label>
+      <label class="field"><span>モデル</span><input id="s-model" value="${esc(s.geminiModel)}" placeholder="gemini-flash-latest"></label>
       <button class="btn primary block" id="s-save">${icon('check')}保存</button>
     </section>
 
